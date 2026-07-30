@@ -1,0 +1,55 @@
+# ============================================================
+# CI — STUDENT TEMPLATE (fill this in yourself)
+# ============================================================
+# GOAL: a "quality gate" that builds and tests BOTH apps on every
+# Pull Request to main, so broken code can't be merged.
+#
+# The triggers and job skeleton are given. Replace each "TODO"
+# with real steps. See ../STUDENT_GUIDE.md for the full brief
+# and how to use secrets.
+# ============================================================
+name: CI
+
+# --- Triggers (already decided for you) ---
+# Runs on PRs into main, on pushes to any branch except main,
+# and can be started by hand from the Actions tab.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches-ignore: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (.NET) build & test
+    runs-on: ubuntu-latest
+    steps:
+      # TODO 1: check out the repository (hint: actions/checkout)
+      # TODO 2: install the .NET 8 SDK (hint: actions/setup-dotnet)
+      # TODO 3: restore NuGet packages for backend/SimpleWebApp.sln
+      # TODO 4: build the solution in Release configuration
+      # TODO 5: run the tests (dotnet test)
+      - name: Not implemented yet
+        run: |
+          echo "TODO: implement the backend CI job."
+          echo "It must: checkout, setup .NET 8, restore, build (Release), test."
+          exit 1   # remove this line once you've added the real steps
+
+  frontend:
+    name: Frontend (Angular) build & test
+    runs-on: ubuntu-latest
+    steps:
+      # TODO 1: check out the repository
+      # TODO 2: install Node 20 (hint: actions/setup-node)
+      # TODO 3: install dependencies in the frontend/ folder
+      # TODO 4: build the Angular app (production configuration)
+      # TODO 5 (optional): run unit tests headless
+      - name: Not implemented yet
+        run: |
+          echo "TODO: implement the frontend CI job."
+          echo "It must: checkout, setup Node 20, install deps, build the Angular app."
+          exit 1   # remove this line once you've added the real steps

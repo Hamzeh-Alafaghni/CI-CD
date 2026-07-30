@@ -1,0 +1,80 @@
+# ============================================================
+# DEPLOY — STUDENT TEMPLATE (fill this in yourself)
+# ============================================================
+# GOAL: a MANUAL workflow. You pick an environment (development /
+# staging / production), it builds the app with that environment's
+# settings and produces a zip ready to copy onto the IIS server.
+#
+# This is also where you practise using SECRETS. See the block at
+# the bottom of this file and ../STUDENT_GUIDE.md.
+# ============================================================
+name: Deploy
+
+# --- Trigger: manual, with an environment picker (given) ---
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        default: development
+        options:
+          - development
+          - staging
+          - production
+      version:
+        description: 'Version label for the package (e.g. 1.0.42)'
+        required: false
+        default: 'manual'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build ${{ github.event.inputs.environment }} package
+    runs-on: ubuntu-latest
+    # Binds the run to a GitHub Environment of the same name. Create these
+    # environments in repo Settings so you can attach reviewers + secrets.
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      # TODO 1: map the chosen environment to the build configs:
+      #         development -> Angular "development" / ASPNETCORE_ENVIRONMENT "Development"
+      #         staging     -> "staging"     / "Staging"
+      #         production  -> "production"  / "Production"
+      #
+      # TODO 2: checkout the repo.
+      #
+      # TODO 3: build the backend (dotnet publish) for the chosen environment
+      #         and zip it.
+      #
+      # TODO 4: build the frontend with the matching Angular configuration
+      #         (ng build --configuration <env>) and zip dist/frontend.
+      #
+      # TODO 5: upload both zips as artifacts so you can download and copy
+      #         them onto the IIS server.
+      - name: Not implemented yet
+        run: |
+          echo "Selected environment: ${{ github.event.inputs.environment }}"
+          echo "TODO: build + package the app for this environment."
+
+      # ----------------------------------------------------------------
+      # HOW TO USE SECRETS (example — uncomment and adapt if you decide to
+      # automate the deploy instead of downloading zips):
+      #
+      #   1. In GitHub: repo Settings > Secrets and variables > Actions.
+      #   2. Add secrets, e.g. IIS_HOST, IIS_USERNAME, IIS_PASSWORD
+      #      (add them under the matching Environment to scope them).
+      #   3. Reference them with the `secrets` context. NEVER paste the
+      #      real value into the YAML — only the name.
+      #
+      # - name: Example — read secrets safely
+      #   env:
+      #     HOST: ${{ secrets.IIS_HOST }}
+      #     USER: ${{ secrets.IIS_USERNAME }}
+      #     PASS: ${{ secrets.IIS_PASSWORD }}
+      #   run: |
+      #     echo "Deploying to $HOST as $USER"   # values are auto-masked in logs
+      #     # ...your deploy commands here, using $PASS...
+      # ----------------------------------------------------------------

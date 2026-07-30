@@ -1,0 +1,23 @@
+# ---- .NET ----
+bin/
+obj/
+publish/
+*.user
+[Rr]elease/
+[Dd]ebug/
+
+# ---- Node / Angular ----
+node_modules/
+dist/
+.angular/
+npm-debug.log*
+
+# ---- Packages produced by CI ----
+*.zip
+
+# ---- Editor / OS ----
+.vs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

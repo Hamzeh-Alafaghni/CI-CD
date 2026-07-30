@@ -1,0 +1,65 @@
+# ============================================================
+# RELEASE — STUDENT TEMPLATE (fill this in yourself)
+# ============================================================
+# GOAL: when code lands on main, produce a versioned release:
+# build both apps, package them into zips, create a git tag, and
+# publish a GitHub Release with the zips attached.
+#
+# Replace each "TODO" with real steps. See ../STUDENT_GUIDE.md.
+# ============================================================
+name: Release
+
+# --- Trigger: every push to main (i.e. after a PR merges) ---
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# HINT: creating tags and releases needs write access to the repo.
+# Think about which permission the GITHUB_TOKEN needs here.
+permissions:
+  contents: read   # TODO: is "read" enough to create a Release? Change if not.
+
+jobs:
+  version:
+    name: Compute version
+    runs-on: ubuntu-latest
+    steps:
+      # TODO: produce a version string (e.g. 1.0.<run number>) and a tag
+      #       (e.g. v1.0.<run number>). Expose it as a job output so the
+      #       other jobs can reuse it. (hint: $GITHUB_OUTPUT, needs:)
+      - name: Not implemented yet
+        run: |
+          echo "TODO - decide and output a version + tag."
+
+  backend:
+    name: Package backend
+    runs-on: ubuntu-latest
+    steps:
+      # TODO: checkout -> setup .NET 8 -> test -> `dotnet publish` the API
+      #       for win-x64 -> zip the publish output -> upload it as an artifact.
+      - name: Not implemented yet
+        run: |
+          echo "TODO - build, publish, and zip the .NET API."
+
+  frontend:
+    name: Package frontend
+    runs-on: ubuntu-latest
+    steps:
+      # TODO: checkout -> setup Node 20 -> install -> build production ->
+      #       zip dist/frontend -> upload it as an artifact.
+      - name: Not implemented yet
+        run: |
+          echo "TODO - build and zip the Angular production bundle."
+
+  release:
+    name: Tag & publish release
+    runs-on: ubuntu-latest
+    steps:
+      # TODO: download the backend + frontend artifacts, then create a
+      #       GitHub Release for the tag with both zips attached.
+      #       (hint: softprops/action-gh-release, or the gh CLI which
+      #        reads the built-in ${{ secrets.GITHUB_TOKEN }})
+      - name: Not implemented yet
+        run: |
+          echo "TODO - create the tag and GitHub Release with artifacts."
