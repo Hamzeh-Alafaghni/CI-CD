@@ -1,39 +1,44 @@
 # ============================================================
-# RELEASE — on every push to main: test, version, package,
-# tag, and publish a GitHub Release with the artifacts.
+# RELEASE — triggered by pushing a version TAG (e.g. v1.2.0).
+# Tests, builds, packages api.zip + web.zip, and publishes a
+# GitHub Release with those assets. The Deploy workflow later
+# pulls these exact assets. (Build once, deploy that artifact.)
 # ============================================================
 name: Release
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
-  workflow_dispatch: {}
+  push:
+    tags: ["v*.*.*"]           # e.g. git tag v1.0.0 && git push origin v1.0.0
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.0.0)"
+        required: true
 
 permissions:
-  contents: write   # needed to create tags + releases
+  contents: write              # needed to create the Release
 
 concurrency:
-  group: release-main
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   version:
-    name: Compute version
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    name: Resolve version from tag
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.v.outputs.version }}
       tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
     steps:
       - id: v
         run: |
-          echo "version=1.0.${{ github.run_number }}" >> $GITHUB_OUTPUT
-          echo "tag=v1.0.${{ github.run_number }}"     >> $GITHUB_OUTPUT
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG"              >> $GITHUB_OUTPUT
+          echo "version=${TAG#v}"      >> $GITHUB_OUTPUT   # strip leading 'v'
+          echo "Releasing $TAG"
 
   backend:
-    name: Package backend
+    name: Package backend -> api.zip
     needs: version
     runs-on: ubuntu-latest
     steps:
@@ -49,15 +54,15 @@ jobs:
           --configuration Release --runtime win-x64 --self-contained false
           -p:Version=${{ needs.version.outputs.version }}
           --output publish/api
-      - name: Zip (versioned)
-        run: cd publish/api && zip -r "$GITHUB_WORKSPACE/backend-${{ needs.version.outputs.version }}.zip" .
+      - name: Zip as api.zip (contents at root)
+        run: cd publish/api && zip -r "$GITHUB_WORKSPACE/api.zip" .
       - uses: actions/upload-artifact@v4
         with:
           name: backend
-          path: backend-*.zip
+          path: api.zip
 
   frontend:
-    name: Package frontend
+    name: Package frontend -> web.zip
     needs: version
     runs-on: ubuntu-latest
     steps:
@@ -71,15 +76,15 @@ jobs:
       - name: Build (production)
         working-directory: frontend
         run: npm run build -- --configuration=production
-      - name: Zip (versioned, contents at root)
-        run: cd frontend/dist/frontend/browser && zip -r "$GITHUB_WORKSPACE/frontend-${{ needs.version.outputs.version }}.zip" .
+      - name: Zip as web.zip (contents at root)
+        run: cd frontend/dist/frontend/browser && zip -r "$GITHUB_WORKSPACE/web.zip" .
       - uses: actions/upload-artifact@v4
         with:
           name: frontend
-          path: frontend-*.zip
+          path: web.zip
 
   release:
-    name: Tag & publish release
+    name: Publish GitHub Release
     needs: [version, backend, frontend]
     runs-on: ubuntu-latest
     steps:
@@ -93,5 +98,5 @@ jobs:
           name: Release ${{ needs.version.outputs.tag }}
           generate_release_notes: true
           files: |
-            artifacts/backend/*.zip
-            artifacts/frontend/*.zip
+            artifacts/backend/api.zip
+            artifacts/frontend/web.zip

@@ -156,12 +156,32 @@ AWS security group (EC2 console → your instance → Security → the security 
 
 | Type | Port | Source |
 |------|------|--------|
-| SSH | 22 | `0.0.0.0/0` (safe: login is key-only) |
+| SSH | 22 | **GitHub Actions IP ranges** (see below) — not `0.0.0.0/0` |
 | HTTP | 80 | `0.0.0.0/0` |
 | Custom TCP | 8080 | `0.0.0.0/0` |
 | RDP | 3389 | **My IP** only |
 
 Click **Save rules**.
+
+**Locking down port 22 (best practice).** The deploy runs on GitHub's Windows
+runners, so only GitHub's IPs need SSH. Instead of opening 22 to the whole
+internet, restrict it to GitHub Actions' published ranges:
+
+1. Get the current ranges (they rotate, so refresh occasionally):
+   ```bash
+   curl -s https://api.github.com/meta | jq -r '.actions[]'
+   ```
+2. Add SSH (port 22) inbound rules for those CIDR blocks instead of `0.0.0.0/0`.
+
+Login is also **key-only** (passwords are disabled), so even the GitHub ranges
+can't log in without your private key. If managing many ranges is too much for a
+short lab, `0.0.0.0/0` with key-only is a fallback — but the ranges are the
+correct practice.
+
+> Zero-exposure alternative: use a **self-hosted GitHub runner installed on the
+> server** instead of the hosted Windows runner. Then no inbound SSH port is
+> needed at all — the runner pulls jobs outbound. (This project uses the hosted
+> runner + SSH so you learn the SSH connection flow.)
 
 ---
 
