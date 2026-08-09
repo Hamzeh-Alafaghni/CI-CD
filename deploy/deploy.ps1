@@ -16,11 +16,11 @@ Import-Module WebAdministration
 
 # ---- Config (must match what you created in SERVER_SETUP.md) ----
 $apiPool   = "SimpleWebApp-Api"
-$apiPath   = "C:\inetpub\api"
+$apiPath   = "C:\inetpub\wwwroot\SimpleWebApp-Api"
 $apiHealth = "http://localhost:8080/health"
 
 $webPool   = "SimpleWebApp-Web"
-$webPath   = "C:\inetpub\web"
+$webPath   = "C:\inetpub\wwwroot\SimpleWebApp-Web"
 $webHealth = "http://localhost/"
 
 $backupRoot = "C:\deploy-backups"

@@ -25,16 +25,33 @@ on:
         description: "Version label (e.g. 1.0.42)"
         required: false
         default: "manual"
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-${{ github.event.inputs.environment }}
+  group: deploy-${{ github.event.inputs.environment || 'auto' }}
   cancel-in-progress: false
 
 jobs:
-  # ---------- 1) Build + TEST + package ----------
+  resolve:
+    name: Resolve target environment
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.pick.outputs.environment }}
+    steps:
+      - id: pick
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          if [ -z "$ENV" ]; then ENV="${{ vars.DEPLOY_ENVIRONMENT }}"; fi
+          if [ -z "$ENV" ]; then ENV="production"; fi
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+  # ---------- 1) Build + TEST + package ---------
   build-and-test:
     runs-on: ubuntu-latest
     steps:
