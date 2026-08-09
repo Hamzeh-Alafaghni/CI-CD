@@ -1,102 +1,65 @@
 # ============================================================
-# RELEASE — triggered by pushing a version TAG (e.g. v1.2.0).
-# Tests, builds, packages api.zip + web.zip, and publishes a
-# GitHub Release with those assets. The Deploy workflow later
-# pulls these exact assets. (Build once, deploy that artifact.)
+# RELEASE — STUDENT TEMPLATE (fill this in yourself)
+# ============================================================
+# GOAL: when code lands on main, produce a versioned release:
+# build both apps, package them into zips, create a git tag, and
+# publish a GitHub Release with the zips attached.
+#
+# Replace each "TODO" with real steps. See ../STUDENT_GUIDE.md.
 # ============================================================
 name: Release
 
+# --- Trigger: every push to main (i.e. after a PR merges) ---
 on:
   push:
-    tags: ["v*.*.*"]           # e.g. git tag v1.0.0 && git push origin v1.0.0
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag to release (e.g. v1.0.0)"
-        required: true
+    branches: [main]
+  workflow_dispatch: {}
 
+# HINT: creating tags and releases needs write access to the repo.
+# Think about which permission the GITHUB_TOKEN needs here.
 permissions:
-  contents: write              # needed to create the Release
-
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
+  contents: read   # TODO: is "read" enough to create a Release? Change if not.
 
 jobs:
   version:
-    name: Resolve version from tag
+    name: Compute version
     runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ steps.v.outputs.tag }}
-      version: ${{ steps.v.outputs.version }}
     steps:
-      - id: v
+      # TODO: produce a version string (e.g. 1.0.<run number>) and a tag
+      #       (e.g. v1.0.<run number>). Expose it as a job output so the
+      #       other jobs can reuse it. (hint: $GITHUB_OUTPUT, needs:)
+      - name: Not implemented yet
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          echo "tag=$TAG"              >> $GITHUB_OUTPUT
-          echo "version=${TAG#v}"      >> $GITHUB_OUTPUT   # strip leading 'v'
-          echo "Releasing $TAG"
+          echo "TODO - decide and output a version + tag."
 
   backend:
-    name: Package backend -> api.zip
-    needs: version
+    name: Package backend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-      - name: Test before release
-        run: dotnet test backend/SimpleWebApp.sln --configuration Release
-      - name: Publish (stamp version)
-        run: >
-          dotnet publish backend/SimpleWebApp.Api/SimpleWebApp.Api.csproj
-          --configuration Release --runtime win-x64 --self-contained false
-          -p:Version=${{ needs.version.outputs.version }}
-          --output publish/api
-      - name: Zip as api.zip (contents at root)
-        run: cd publish/api && zip -r "$GITHUB_WORKSPACE/api.zip" .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: backend
-          path: api.zip
+      # TODO: checkout -> setup .NET 8 -> test -> `dotnet publish` the API
+      #       for win-x64 -> zip the publish output -> upload it as an artifact.
+      - name: Not implemented yet
+        run: |
+          echo "TODO - build, publish, and zip the .NET API."
 
   frontend:
-    name: Package frontend -> web.zip
-    needs: version
+    name: Package frontend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Install
-        working-directory: frontend
-        run: npm install
-      - name: Build (production)
-        working-directory: frontend
-        run: npm run build -- --configuration=production
-      - name: Zip as web.zip (contents at root)
-        run: cd frontend/dist/frontend/browser && zip -r "$GITHUB_WORKSPACE/web.zip" .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: frontend
-          path: web.zip
+      # TODO: checkout -> setup Node 20 -> install -> build production ->
+      #       zip dist/frontend -> upload it as an artifact.
+      - name: Not implemented yet
+        run: |
+          echo "TODO - build and zip the Angular production bundle."
 
   release:
-    name: Publish GitHub Release
-    needs: [version, backend, frontend]
+    name: Tag & publish release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.version.outputs.tag }}
-          name: Release ${{ needs.version.outputs.tag }}
-          generate_release_notes: true
-          files: |
-            artifacts/backend/api.zip
-            artifacts/frontend/web.zip
+      # TODO: download the backend + frontend artifacts, then create a
+      #       GitHub Release for the tag with both zips attached.
+      #       (hint: softprops/action-gh-release, or the gh CLI which
+      #        reads the built-in ${{ secrets.GITHUB_TOKEN }})
+      - name: Not implemented yet
+        run: |
+          echo "TODO - create the tag and GitHub Release with artifacts."

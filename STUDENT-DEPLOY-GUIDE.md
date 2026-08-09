@@ -180,7 +180,5 @@ restore ...; exit 1 }` for rollback.
 
 ---
 
-### Reference material (read, don't copy)
-- `ci-cd-solution/docs/03-PIPELINES-EXPLAINED.md` — how a deploy pipeline is built.
-- `ci-cd-solution/DEPLOY_BEST_PRACTICES.md` (in `.github/`) — the principles.
-- `SETUP-STEP-BY-STEP.md` — the server, sites, secrets.
+### Reference material
+- `SETUP-STEP-BY-STEP.md` — the server, sites, and secrets you deploy to.

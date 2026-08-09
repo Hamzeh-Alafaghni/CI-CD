@@ -7,8 +7,8 @@ Everything you need, in order, with exact names. Do the parts in this order:
 
 ## Reference table — the exact names (don't change these)
 
-These names must match between the server and `deploy/deploy.ps1`. Use them
-exactly.
+These names must match between the server and your Deploy workflow (`deploy.yml`).
+Use them exactly.
 
 | Thing | Frontend (Angular) | Backend (.NET API) |
 |-------|--------------------|--------------------|
@@ -119,7 +119,7 @@ and **SimpleWebApp-Web** (port 80), both **Started**. If a site shows "Stopped",
 select it and click **Start** in the Actions pane.
 
 > The site name, the pool name, the folder, and the port must be **exactly** as
-> above — that's what `deploy/deploy.ps1` looks for.
+> above — that's what your Deploy workflow (`deploy.yml`) targets.
 
 ### A4. Enable SSH so GitHub can deploy
 
