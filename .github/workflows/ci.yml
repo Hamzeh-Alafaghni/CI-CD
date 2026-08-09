@@ -5,8 +5,7 @@
 # Pull Request to main, so broken code can't be merged.
 #
 # The triggers and job skeleton are given. Replace each "TODO"
-# with real steps. See ../STUDENT_GUIDE.md for the full brief
-# and how to use secrets.
+# with real steps. See STUDENT-DEPLOY-GUIDE.md for the full brief.
 # ============================================================
 name: CI
 

@@ -5,7 +5,7 @@
 # build both apps, package them into zips, create a git tag, and
 # publish a GitHub Release with the zips attached.
 #
-# Replace each "TODO" with real steps. See ../STUDENT_GUIDE.md.
+# Replace each "TODO" with real steps. See STUDENT-DEPLOY-GUIDE.md (Task A).
 # ============================================================
 name: Release
 
