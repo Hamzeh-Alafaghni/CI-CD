@@ -189,8 +189,13 @@ jobs:
         run: |
           $key = "$env:USERPROFILE\.ssh\id_ed25519"
           $target = "$($env:SSH_USER)@$($env:SSH_HOST)"
-          ssh -i $key $target "powershell -Command \"New-Item -ItemType Directory -Force -Path $env:INCOMING | Out-Null\""
-          scp -i $key pkg\api.zip pkg\web.zip out\deploy.ps1 "${target}:$env:INCOMING/"
+          $remoteDir = $env:INCOMING.Replace('\','/')   # C:/deploy-incoming (forward slashes for scp)
+          ssh -i $key $target "powershell -Command \"New-Item -ItemType Directory -Force -Path '$env:INCOMING' | Out-Null\""
+          Write-Host "Uploading to ${target}:$remoteDir/"
+          scp -i $key pkg/api.zip pkg/web.zip out/deploy.ps1 "${target}:$remoteDir/"
+          if ($LASTEXITCODE -ne 0) { throw "scp failed (exit $LASTEXITCODE)" }
+          Write-Host "--- remote incoming after upload ---"
+          ssh -i $key $target "powershell -Command \"Get-ChildItem '$env:INCOMING' | Select-Object Name,Length | Format-Table\""
 
       - name: Deploy + health check + rollback
         env:
