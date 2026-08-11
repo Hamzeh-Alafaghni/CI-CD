@@ -104,8 +104,15 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           $key = "$env:USERPROFILE\.ssh\id_ed25519"
-          $who = ssh -i $key -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$($env:SSH_USER)@$($env:SSH_HOST)" "whoami"
-          if (-not $who) { throw "SSH connection failed - check SSH_HOST / SSH_USER / SSH_PRIVATE_KEY" }
+          $target = "$($env:SSH_USER)@$($env:SSH_HOST)"
+          $who = $null
+          for ($i = 1; $i -le 5; $i++) {
+            Write-Host "SSH attempt $i/5 to $target ..."
+            $who = ssh -i $key -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 $target "whoami" 2>$null
+            if ($who) { break }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $who) { throw "SSH connection failed after 5 attempts - check SSH_HOST / SSH_USER / SSH_PRIVATE_KEY / port 22" }
           Write-Host "SSH OK (logged in as $who)"
 
       - name: Generate deploy script
@@ -113,8 +120,8 @@ jobs:
           $body = @'
           param(
             [string]$Environment,
-            [string]$ApiPool,[string]$ApiPath,[string]$ApiHealth,
-            [string]$WebPool,[string]$WebPath,[string]$WebHealth,
+            [string]$ApiSite,[string]$ApiPool,[string]$ApiPath,[string]$ApiHealth,
+            [string]$WebSite,[string]$WebPool,[string]$WebPath,[string]$WebHealth,
             [string]$Incoming,[string]$Backups,[int]$Keep,[int]$Retries,[int]$Delay
           )
           $ErrorActionPreference = 'Stop'
@@ -129,6 +136,7 @@ jobs:
               return $b
             }
             New-Item -ItemType Directory -Force -Path $path | Out-Null
+            Write-Host "No existing $name to back up (first deploy)"
             return $null
           }
           function Prune-Backups($name){
@@ -136,17 +144,24 @@ jobs:
               Sort-Object LastWriteTime -Descending | Select-Object -Skip $Keep |
               Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
           }
-          function Deploy-Zip($zip,$path,$useOffline){
+          function Stop-SitePool($site,$pool){
+            Stop-Website -Name $site -ErrorAction SilentlyContinue
+            Stop-WebAppPool -Name $pool -ErrorAction SilentlyContinue
+          }
+          function Start-SitePool($site,$pool){
+            Start-WebAppPool -Name $pool -ErrorAction SilentlyContinue
+            Start-Website -Name $site -ErrorAction SilentlyContinue
+          }
+          function Deploy-Zip($zip,$path){
             $tmp = Join-Path $env:TEMP ("ex_" + [guid]::NewGuid())
             Expand-Archive $zip $tmp -Force
-            if($useOffline){ Set-Content (Join-Path $path 'app_offline.htm') '<h1>Deploying...</h1>' -ErrorAction SilentlyContinue; Start-Sleep 2 }
-            Get-ChildItem $path -Force | Where-Object { $_.Name -ne 'app_offline.htm' } | Remove-Item -Recurse -Force
+            if(Test-Path $path){ Get-ChildItem $path -Force | Remove-Item -Recurse -Force }
+            else { New-Item -ItemType Directory -Force -Path $path | Out-Null }
             Copy-Item (Join-Path $tmp '*') $path -Recurse -Force
             Remove-Item $tmp -Recurse -Force
-            if($useOffline){ Remove-Item (Join-Path $path 'app_offline.htm') -Force -ErrorAction SilentlyContinue }
           }
           function Restore-Site($backup,$path){
-            if($backup){ Get-ChildItem $path -Force | Remove-Item -Recurse -Force; Copy-Item (Join-Path $backup '*') $path -Recurse -Force }
+            if($backup){ Get-ChildItem $path -Force | Remove-Item -Recurse -Force; Copy-Item (Join-Path $backup '*') $path -Recurse -Force; Write-Host "Restored $path" }
           }
           function Test-Health($url){
             for($i=1;$i -le $Retries;$i++){
@@ -157,23 +172,35 @@ jobs:
           }
 
           Write-Host "=== Deploying ($Environment) ==="
+          # 1) Back up current release (both), only if it exists
           $apiBk = Backup-Site $ApiPath 'api'
           $webBk = Backup-Site $WebPath 'web'
           try {
-            Deploy-Zip (Join-Path $Incoming 'api.zip') $ApiPath $true
-            Deploy-Zip (Join-Path $Incoming 'web.zip') $WebPath $false
-            Restart-WebAppPool $ApiPool -ErrorAction SilentlyContinue
-            Restart-WebAppPool $WebPool -ErrorAction SilentlyContinue
+            # 2) Stop sites + app pools (backend and frontend)
+            Stop-SitePool $ApiSite $ApiPool
+            Stop-SitePool $WebSite $WebPool
+            Start-Sleep -Seconds 2
+            # 3) Deploy both
+            Deploy-Zip (Join-Path $Incoming 'api.zip') $ApiPath
+            Deploy-Zip (Join-Path $Incoming 'web.zip') $WebPath
+            # 4) Start pools + sites again
+            Start-SitePool $ApiSite $ApiPool
+            Start-SitePool $WebSite $WebPool
+            # 5) Health check both
             Test-Health $ApiHealth
             Test-Health $WebHealth
+            # 6) Success -> prune old backups
             Prune-Backups 'api'; Prune-Backups 'web'
             Write-Host "=== SUCCESS: deploy healthy ($Environment) ==="
           } catch {
+            # 7) Roll back both to the previous release
             Write-Warning "DEPLOY FAILED: $($_.Exception.Message) -- rolling back"
+            Stop-SitePool $ApiSite $ApiPool
+            Stop-SitePool $WebSite $WebPool
             Restore-Site $apiBk $ApiPath
             Restore-Site $webBk $WebPath
-            Restart-WebAppPool $ApiPool -ErrorAction SilentlyContinue
-            Restart-WebAppPool $WebPool -ErrorAction SilentlyContinue
+            Start-SitePool $ApiSite $ApiPool
+            Start-SitePool $WebSite $WebPool
             Write-Host "=== ROLLED BACK to previous release ==="
             exit 1
           }
@@ -205,8 +232,8 @@ jobs:
           $key = "$env:USERPROFILE\.ssh\id_ed25519"
           $target = "$($env:SSH_USER)@$($env:SSH_HOST)"
           $deployArgs = "-Environment ${{ github.event.inputs.environment }} " +
-                  "-ApiPool $env:API_POOL -ApiPath $env:API_PATH -ApiHealth $env:API_HEALTH " +
-                  "-WebPool $env:WEB_POOL -WebPath $env:WEB_PATH -WebHealth $env:WEB_HEALTH " +
+                  "-ApiSite $env:API_SITE -ApiPool $env:API_POOL -ApiPath $env:API_PATH -ApiHealth $env:API_HEALTH " +
+                  "-WebSite $env:WEB_SITE -WebPool $env:WEB_POOL -WebPath $env:WEB_PATH -WebHealth $env:WEB_HEALTH " +
                   "-Incoming $env:INCOMING -Backups $env:BACKUPS " +
                   "-Keep $env:KEEP_BACKUPS -Retries $env:HEALTH_RETRIES -Delay $env:HEALTH_DELAY"
           ssh -i $key $target "powershell -ExecutionPolicy Bypass -File $env:INCOMING\deploy.ps1 $deployArgs"
