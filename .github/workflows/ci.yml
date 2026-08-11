@@ -1,17 +1,9 @@
 # ============================================================
-# CI — STUDENT TEMPLATE (fill this in yourself)
-# ============================================================
-# GOAL: a "quality gate" that builds and tests BOTH apps on every
-# Pull Request to main, so broken code can't be merged.
-#
-# The triggers and job skeleton are given. Replace each "TODO"
-# with real steps. See STUDENT-DEPLOY-GUIDE.md for the full brief.
+# CI (ANSWER KEY) — quality gate on every Pull Request to main.
+# Builds AND tests both apps. Nothing is deployed here.
 # ============================================================
 name: CI
 
-# --- Triggers (already decided for you) ---
-# Runs on PRs into main, on pushes to any branch except main,
-# and can be started by hand from the Actions tab.
 on:
   pull_request:
     branches: [main]
@@ -22,33 +14,41 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Backend (.NET) build & test
     runs-on: ubuntu-latest
     steps:
-      # TODO 1: check out the repository (hint: actions/checkout)
-      # TODO 2: install the .NET 8 SDK (hint: actions/setup-dotnet)
-      # TODO 3: restore NuGet packages for backend/SimpleWebApp.sln
-      # TODO 4: build the solution in Release configuration
-      # TODO 5: run the tests (dotnet test)
-      - name: Not implemented yet
-        run: |
-          echo "TODO: implement the backend CI job."
-          echo "It must: checkout, setup .NET 8, restore, build (Release), test."
-          exit 1   # remove this line once you've added the real steps
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        run: dotnet restore backend/SimpleWebApp.sln
+      - name: Build (Release)
+        run: dotnet build backend/SimpleWebApp.sln --configuration Release --no-restore
+      - name: Test (Release)
+        run: dotnet test backend/SimpleWebApp.sln --configuration Release --no-build
 
   frontend:
     name: Frontend (Angular) build & test
     runs-on: ubuntu-latest
     steps:
-      # TODO 1: check out the repository
-      # TODO 2: install Node 20 (hint: actions/setup-node)
-      # TODO 3: install dependencies in the frontend/ folder
-      # TODO 4: build the Angular app (production configuration)
-      # TODO 5 (optional): run unit tests headless
-      - name: Not implemented yet
-        run: |
-          echo "TODO: implement the frontend CI job."
-          echo "It must: checkout, setup Node 20, install deps, build the Angular app."
-          exit 1   # remove this line once you've added the real steps
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install
+        working-directory: frontend
+        run: npm install
+      - name: Build (production)
+        working-directory: frontend
+        run: npm run build -- --configuration=production
+      - name: Test (headless)
+        working-directory: frontend
+        run: npm test -- --watch=false --browsers=ChromeHeadless
+        continue-on-error: true

@@ -1,14 +1,12 @@
 # ============================================================
-# DEPLOY — STUDENT TEMPLATE (you implement the steps)
-# ============================================================
-# GOAL: manual, release-based deploy to IIS on a Windows runner,
-# with package validation, an SSH connection test, backup,
-# health check, and automatic rollback.
+# DEPLOY (ANSWER KEY) — manual, environment-aware, RELEASE-BASED.
+# Runs on a GitHub-hosted WINDOWS runner, pulls a published
+# Release's assets, validates them, tests the SSH connection,
+# then deploys to IIS over SSH with backup + health check +
+# automatic rollback. No committed deploy.ps1 — the server-side
+# script is generated from the env: variables below.
 #
-# The triggers and the env: config are given. Replace each TODO
-# with real steps. See STUDENT-DEPLOY-GUIDE.md for the full brief.
-#
-# Secrets you must add:  SSH_HOST, SSH_USER, SSH_PRIVATE_KEY
+# Secrets required:  SSH_HOST, SSH_USER, SSH_PRIVATE_KEY
 # ============================================================
 name: Deploy
 
@@ -22,21 +20,24 @@ on:
         default: development
         options: [development, staging, production]
       version:
-        description: "Release tag to deploy (e.g. v1.0.0) or 'latest'"
+        description: "Release tag to deploy (e.g. v1.0.0), or 'latest'"
         required: true
         default: "latest"
 
 permissions:
   contents: read
 
-# ---- All non-secret config lives here (edit in ONE place) ----
+concurrency:
+  group: deploy-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
 env:
   WEB_SITE: SimpleWebApp-Web
   WEB_POOL: SimpleWebApp-Web
-  WEB_PATH: C:\inetpub\web
+  WEB_PATH: C:\inetpub\wwwroot\SimpleWebApp-Web
   API_SITE: SimpleWebApp-Api
   API_POOL: SimpleWebApp-Api
-  API_PATH: C:\inetpub\api
+  API_PATH: C:\inetpub\wwwroot\SimpleWebApp-Api
   WEB_HEALTH: http://localhost/
   API_HEALTH: http://localhost:8080/health
   INCOMING: C:\deploy-incoming
@@ -47,26 +48,160 @@ env:
 
 jobs:
   deploy:
+    name: Deploy ${{ github.event.inputs.environment }}
     runs-on: windows-latest
     environment: ${{ github.event.inputs.environment }}
     steps:
-      # TODO 1: Download the chosen release's api.zip + web.zip
-      #         (hint: the `gh` CLI is preinstalled; set GH_TOKEN: ${{ github.token }};
-      #          `gh release download <tag> --pattern "*.zip"`)
-      #
-      # TODO 2: Validate the package BEFORE touching the server
-      #         (both zips exist, not empty, contain web.config / index.html)
-      #
-      # TODO 3: Write SSH_PRIVATE_KEY to a file, fix its permissions,
-      #         and add the host to known_hosts (hint: ssh-keyscan)
-      #
-      # TODO 4: Test the SSH connection (hint: ssh ... "whoami"; fail if empty)
-      #
-      # TODO 5: Copy the zips + your deploy logic to the server (hint: scp)
-      #
-      # TODO 6: Run the deploy on the server so it does:
-      #         backup -> prune old backups -> app_offline swap ->
-      #         recycle app pools -> health check with retries ->
-      #         ROLL BACK on any failure, then exit 1
-      - name: Not implemented yet
-        run: echo "TODO - build the deploy job (see STUDENT-DEPLOY-GUIDE.md)"
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.event.inputs.version }}"
+          if ($tag -eq "latest") {
+            $tag = gh release view --repo $env:GITHUB_REPOSITORY --json tagName -q .tagName
+          }
+          Write-Host "Deploying release: $tag"
+          New-Item -ItemType Directory -Force pkg | Out-Null
+          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern "*.zip" --dir pkg
+          Get-ChildItem pkg
+
+      - name: Validate package
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($z in 'api.zip','web.zip') {
+            if (!(Test-Path "pkg\$z")) { throw "Release is missing $z" }
+            if ((Get-Item "pkg\$z").Length -lt 1024) { throw "$z is too small - bad build?" }
+          }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $api = [IO.Compression.ZipFile]::OpenRead((Resolve-Path pkg\api.zip))
+          $hasWebConfig = $api.Entries.Name -contains 'web.config'
+          $api.Dispose()
+          if (-not $hasWebConfig) { throw "api.zip does not contain web.config" }
+          $web = [IO.Compression.ZipFile]::OpenRead((Resolve-Path pkg\web.zip))
+          $hasIndex = $web.Entries.Name -contains 'index.html'
+          $web.Dispose()
+          if (-not $hasIndex) { throw "web.zip does not contain index.html" }
+          Write-Host "Package validation passed."
+
+      - name: Prepare SSH key
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sshDir = "$env:USERPROFILE\.ssh"
+          New-Item -ItemType Directory -Force $sshDir | Out-Null
+          $key = "$sshDir\id_ed25519"
+          Set-Content -Path $key -Value @"
+          ${{ secrets.SSH_PRIVATE_KEY }}
+          "@ -NoNewline
+          icacls $key /inheritance:r | Out-Null
+          icacls $key /grant:r "$($env:USERNAME):(R)" | Out-Null
+          ssh-keyscan -H $env:SSH_HOST 2>$null | Out-File "$sshDir\known_hosts" -Append -Encoding ascii
+
+      - name: Test SSH connection
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          $key = "$env:USERPROFILE\.ssh\id_ed25519"
+          $who = ssh -i $key -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$($env:SSH_USER)@$($env:SSH_HOST)" "whoami"
+          if (-not $who) { throw "SSH connection failed - check SSH_HOST / SSH_USER / SSH_PRIVATE_KEY" }
+          Write-Host "SSH OK (logged in as $who)"
+
+      - name: Generate deploy script
+        run: |
+          $body = @'
+          param(
+            [string]$Environment,
+            [string]$ApiPool,[string]$ApiPath,[string]$ApiHealth,
+            [string]$WebPool,[string]$WebPath,[string]$WebHealth,
+            [string]$Incoming,[string]$Backups,[int]$Keep,[int]$Retries,[int]$Delay
+          )
+          $ErrorActionPreference = 'Stop'
+          Import-Module WebAdministration
+          New-Item -ItemType Directory -Force -Path $Backups | Out-Null
+
+          function Backup-Site($path,$name){
+            if((Test-Path $path) -and (Get-ChildItem $path -Force | Select-Object -First 1)){
+              $b = Join-Path $Backups ("{0}_{1}" -f $name,(Get-Date -Format 'yyyyMMdd_HHmmss'))
+              Copy-Item $path $b -Recurse -Force
+              Write-Host "Backed up $name -> $b"
+              return $b
+            }
+            New-Item -ItemType Directory -Force -Path $path | Out-Null
+            return $null
+          }
+          function Prune-Backups($name){
+            Get-ChildItem $Backups -Directory -Filter "$name*" |
+              Sort-Object LastWriteTime -Descending | Select-Object -Skip $Keep |
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          function Deploy-Zip($zip,$path,$useOffline){
+            $tmp = Join-Path $env:TEMP ("ex_" + [guid]::NewGuid())
+            Expand-Archive $zip $tmp -Force
+            if($useOffline){ Set-Content (Join-Path $path 'app_offline.htm') '<h1>Deploying...</h1>' -ErrorAction SilentlyContinue; Start-Sleep 2 }
+            Get-ChildItem $path -Force | Where-Object { $_.Name -ne 'app_offline.htm' } | Remove-Item -Recurse -Force
+            Copy-Item (Join-Path $tmp '*') $path -Recurse -Force
+            Remove-Item $tmp -Recurse -Force
+            if($useOffline){ Remove-Item (Join-Path $path 'app_offline.htm') -Force -ErrorAction SilentlyContinue }
+          }
+          function Restore-Site($backup,$path){
+            if($backup){ Get-ChildItem $path -Force | Remove-Item -Recurse -Force; Copy-Item (Join-Path $backup '*') $path -Recurse -Force }
+          }
+          function Test-Health($url){
+            for($i=1;$i -le $Retries;$i++){
+              try { $r = Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 15; if($r.StatusCode -eq 200){ Write-Host "Healthy: $url"; return } } catch {}
+              Start-Sleep -Seconds $Delay
+            }
+            throw "Health check failed after $Retries tries: $url"
+          }
+
+          Write-Host "=== Deploying ($Environment) ==="
+          $apiBk = Backup-Site $ApiPath 'api'
+          $webBk = Backup-Site $WebPath 'web'
+          try {
+            Deploy-Zip (Join-Path $Incoming 'api.zip') $ApiPath $true
+            Deploy-Zip (Join-Path $Incoming 'web.zip') $WebPath $false
+            Restart-WebAppPool $ApiPool -ErrorAction SilentlyContinue
+            Restart-WebAppPool $WebPool -ErrorAction SilentlyContinue
+            Test-Health $ApiHealth
+            Test-Health $WebHealth
+            Prune-Backups 'api'; Prune-Backups 'web'
+            Write-Host "=== SUCCESS: deploy healthy ($Environment) ==="
+          } catch {
+            Write-Warning "DEPLOY FAILED: $($_.Exception.Message) -- rolling back"
+            Restore-Site $apiBk $ApiPath
+            Restore-Site $webBk $WebPath
+            Restart-WebAppPool $ApiPool -ErrorAction SilentlyContinue
+            Restart-WebAppPool $WebPool -ErrorAction SilentlyContinue
+            Write-Host "=== ROLLED BACK to previous release ==="
+            exit 1
+          }
+          '@
+          New-Item -ItemType Directory -Force out | Out-Null
+          Set-Content -Path out\deploy.ps1 -Value $body -Encoding UTF8
+          Write-Host "Generated out\deploy.ps1"
+
+      - name: Copy to server
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          $key = "$env:USERPROFILE\.ssh\id_ed25519"
+          $target = "$($env:SSH_USER)@$($env:SSH_HOST)"
+          ssh -i $key $target "powershell -Command \"New-Item -ItemType Directory -Force -Path $env:INCOMING | Out-Null\""
+          scp -i $key pkg\api.zip pkg\web.zip out\deploy.ps1 "${target}:$env:INCOMING/"
+
+      - name: Deploy + health check + rollback
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          $key = "$env:USERPROFILE\.ssh\id_ed25519"
+          $target = "$($env:SSH_USER)@$($env:SSH_HOST)"
+          $deployArgs = "-Environment ${{ github.event.inputs.environment }} " +
+                  "-ApiPool $env:API_POOL -ApiPath $env:API_PATH -ApiHealth $env:API_HEALTH " +
+                  "-WebPool $env:WEB_POOL -WebPath $env:WEB_PATH -WebHealth $env:WEB_HEALTH " +
+                  "-Incoming $env:INCOMING -Backups $env:BACKUPS " +
+                  "-Keep $env:KEEP_BACKUPS -Retries $env:HEALTH_RETRIES -Delay $env:HEALTH_DELAY"
+          ssh -i $key $target "powershell -ExecutionPolicy Bypass -File $env:INCOMING\deploy.ps1 $deployArgs"
