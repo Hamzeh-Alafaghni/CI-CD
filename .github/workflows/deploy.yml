@@ -91,11 +91,18 @@ jobs:
           $sshDir = "$env:USERPROFILE\.ssh"
           New-Item -ItemType Directory -Force $sshDir | Out-Null
           $key = "$sshDir\id_ed25519"
-          Set-Content -Path $key -Value @"
+          $raw = @'
           ${{ secrets.SSH_PRIVATE_KEY }}
-          "@ -NoNewline
+          '@
+          # normalize to LF and ensure a trailing newline (OpenSSH rejects CRLF keys)
+          $raw = ($raw -replace "`r`n", "`n") -replace "`r", "`n"
+          if (-not $raw.EndsWith("`n")) { $raw += "`n" }
+          [System.IO.File]::WriteAllText($key, $raw)
           icacls $key /inheritance:r | Out-Null
           icacls $key /grant:r "$($env:USERNAME):(R)" | Out-Null
+          $chk = ssh-keygen -y -f $key 2>&1
+          if ($LASTEXITCODE -ne 0) { throw "Private key is invalid / not loadable: $chk" }
+          Write-Host "Private key loaded OK."
           ssh-keyscan -H $env:SSH_HOST 2>$null | Out-File "$sshDir\known_hosts" -Append -Encoding ascii
 
       - name: Test SSH connection
