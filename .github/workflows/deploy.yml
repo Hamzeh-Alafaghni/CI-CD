@@ -153,17 +153,31 @@ jobs:
           }
           function Stop-SitePool($site,$pool){
             Stop-Website -Name $site -ErrorAction SilentlyContinue
-            Stop-WebAppPool -Name $pool -ErrorAction SilentlyContinue
+            for($i=0;$i -lt 15;$i++){
+              $s = (Get-WebAppPoolState -Name $pool -ErrorAction SilentlyContinue).Value
+              if($s -eq 'Stopped'){ break }
+              if($s -eq 'Started'){ try { Stop-WebAppPool -Name $pool -ErrorAction Stop } catch {} }
+              Start-Sleep -Seconds 2
+            }
+            Start-Sleep -Seconds 3   # let w3wp fully exit and release file locks
           }
           function Start-SitePool($site,$pool){
-            Start-WebAppPool -Name $pool -ErrorAction SilentlyContinue
+            for($i=0;$i -lt 15;$i++){
+              $s = (Get-WebAppPoolState -Name $pool -ErrorAction SilentlyContinue).Value
+              if($s -eq 'Started'){ break }
+              if($s -eq 'Stopped'){ try { Start-WebAppPool -Name $pool -ErrorAction Stop } catch {} }
+              Start-Sleep -Seconds 2
+            }
             Start-Website -Name $site -ErrorAction SilentlyContinue
           }
           function Deploy-Zip($zip,$path){
             $tmp = Join-Path $env:TEMP ("ex_" + [guid]::NewGuid())
             Expand-Archive $zip $tmp -Force
-            if(Test-Path $path){ Get-ChildItem $path -Force | Remove-Item -Recurse -Force }
-            else { New-Item -ItemType Directory -Force -Path $path | Out-Null }
+            if(-not (Test-Path $path)){ New-Item -ItemType Directory -Force -Path $path | Out-Null }
+            for($i=1;$i -le 5;$i++){
+              try { Get-ChildItem $path -Force | Remove-Item -Recurse -Force -ErrorAction Stop; break }
+              catch { if($i -eq 5){ throw }; Start-Sleep -Seconds 3 }
+            }
             Copy-Item (Join-Path $tmp '*') $path -Recurse -Force
             Remove-Item $tmp -Recurse -Force
           }
