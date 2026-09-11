@@ -1,13 +1,8 @@
-# ============================================================
-# RELEASE (ANSWER KEY) — triggered by pushing a version TAG.
-# Tests, builds, packages api.zip + web.zip, and publishes a
-# GitHub Release with those assets (build once, deploy that).
-# ============================================================
 name: Release
 
 on:
   push:
-    tags: ["v*.*.*"]           # git tag v1.0.0 && git push origin v1.0.0
+    tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -69,9 +64,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Install
+          cache: "npm"
+          cache-dependency-path: "frontend/package-lock.json"
+      - name: Install dependencies (CI)
         working-directory: frontend
-        run: npm install
+        run: npm ci
       - name: Build (production)
         working-directory: frontend
         run: npm run build -- --configuration=production
